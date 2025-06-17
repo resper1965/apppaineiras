@@ -1,96 +1,73 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { Platform } from "react-native";
-import * as Device from 'expo-device';
-import axios from "axios";
-import { router } from 'expo-router';
-import { logoff } from "@/api/app/auth";
+import React, { useState, useCallback, useEffect, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthContext, User, AuthContextType } from '../contexts/AuthContext';
 
-export interface AuthContextType {
-  user: any;
-  setTitulo: (user: any) => void;
-  chave: string;
-  setChave: (chave: string) => void;
-  nome: string;
-  setNome: (chave: string) => void;
-  ip: string;
-  device: string;
-  appVersion: string;
-  osVersion: string;
-  logout: () => void;
+interface AuthProviderProps {
+  children: ReactNode;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
-let globalAuthContext: AuthContextType | null = null; // Variável global
-let globalLogout: (() => void) | null = null; // Variável global para logout
+export function AuthProvider({ children }: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-export const getAuthContext = () => {
-  if (!globalAuthContext) {
-    throw new Error("AuthContext ainda não foi inicializado.");
-  }
-  return globalAuthContext;
-};
-
-export const getLogout = () => {
-  if (!globalLogout) {
-    throw new Error("Logout function ainda não foi inicializada.");
-  }
-  return globalLogout;
-};
-
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setTitulo] = useState<any>(null);
-  const [nome, setNome] = useState<any>(null);
-  const [chave, setChave] = useState<any>(null);
-  const [ip, setIp] = useState<string>("");
-  const [device, setDevice] = useState<string>(Device.modelName || "Desconhecido");
-  const [appVersion, setAppVersion] = useState<string>(process.env.EXPO_PUBLIC_APP_VERSION || "Desconhecido");
-  const [osVersion, setOsVersion] = useState<string>(Platform.Version.toString());
-
-  useEffect(() => {
-    const fetchIp = async () => {
-      try {
-        const response = await axios.get("https://checkip.amazonaws.com/");
-        setIp(response.data.trim());
-      } catch (error) {
-        console.error("Erro ao buscar o IP:", error);
-      }
-    };
-
-    fetchIp();
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      // Implementar lógica de login aqui
+      const mockUser: User = { id: '1', email, name: 'User' };
+      setUser(mockUser);
+      await AsyncStorage.setItem('@auth_token', 'mock_token');
+      await AsyncStorage.setItem('@user_data', JSON.stringify(mockUser));
+      return true;
+    } catch (error) {
+      console.error('Erro no login:', error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const logout = () => {
-    setTitulo(undefined);
-    setChave("");
-    logoff(chave);
-    router.navigate("/");
-  };
+  const logout = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await AsyncStorage.multiRemove(['@auth_token', '@user_data']);
+      setUser(null);
+    } catch (error) {
+      console.error('Erro no logout:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  globalLogout = logout; // Armazena a função logout globalmente
+  const checkAuthState = useCallback(async () => {
+    try {
+      const [token, userData] = await AsyncStorage.multiGet(['@auth_token', '@user_data']);
 
-  const contextValue = {
+      if (token[1] && userData[1]) {
+        setUser(JSON.parse(userData[1]));
+      }
+    } catch (error) {
+      console.error('Erro ao verificar estado de autenticação:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkAuthState();
+  }, [checkAuthState]);
+
+  const value: AuthContextType = {
     user,
-    setTitulo,
-    nome,
-    setNome,
-    chave,
-    setChave,
-    ip,
-    device,
-    appVersion,
-    osVersion,
+    login,
     logout,
+    isLoading,
+    isAuthenticated: !!user,
   };
 
-  globalAuthContext = contextValue; // Armazena globalmente
-
-  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth deve ser usado dentro de um AuthProvider");
-  }
-  return context;
-};
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}

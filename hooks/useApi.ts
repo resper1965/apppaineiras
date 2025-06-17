@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ApiResponse } from '../types/global';
 
 interface UseApiState<T> {
@@ -11,39 +11,93 @@ interface UseApiState<T> {
 
 export function useApi<T>(
   apiCall: () => Promise<ApiResponse<T>>,
-  dependencies: any[] = []
+  dependencies: any[] = [],
+  options?: {
+    immediate?: boolean;
+    retryCount?: number;
+    retryDelay?: number;
+  }
 ): UseApiState<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const retryCountRef = useRef(0);
+  
+  const { immediate = true, retryCount = 3, retryDelay = 1000 } = options || {};
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchData = useCallback(async (isRetry = false) => {
+    // Cancelar requisição anterior se existir
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    abortControllerRef.current = new AbortController();
+    
+    if (!isRetry) {
+      setLoading(true);
+      setError(null);
+      retryCountRef.current = 0;
+    }
     
     try {
       const response = await apiCall();
       
       if (response.success) {
         setData(response.data);
+        setError(null);
+        retryCountRef.current = 0;
       } else {
-        setError(response.error || 'Erro desconhecido');
+        const errorMessage = response.error || 'Erro desconhecido';
+        
+        if (retryCountRef.current < retryCount) {
+          retryCountRef.current++;
+          setTimeout(() => {
+            fetchData(true);
+          }, retryDelay * retryCountRef.current);
+        } else {
+          setError(errorMessage);
+        }
       }
     } catch (err) {
-      setError('Erro de conexão');
+      if (err instanceof Error && err.name === 'AbortError') {
+        return; // Requisição foi cancelada
+      }
+      
+      const errorMessage = 'Erro de conexão';
+      
+      if (retryCountRef.current < retryCount) {
+        retryCountRef.current++;
+        setTimeout(() => {
+          fetchData(true);
+        }, retryDelay * retryCountRef.current);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
-      setLoading(false);
+      if (!isRetry) {
+        setLoading(false);
+      }
     }
   }, dependencies);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (immediate) {
+      fetchData();
+    }
+    
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchData, immediate]);
 
   return {
     data,
     loading,
     error,
-    refresh: fetchData,
+    refresh: () => fetchData(),
   };
 }
