@@ -1,81 +1,116 @@
-import { getLogout } from '@/providers/AuthProvider';
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-// Códigos de cores ANSI
-const colors = {
-    reset: '\x1b[0m',
-    bright: '\x1b[1m',
-    dim: '\x1b[2m',
-    underscore: '\x1b[4m',
-    blink: '\x1b[5m',
-    reverse: '\x1b[7m',
-    hidden: '\x1b[8m',
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import { ApiResponse } from '../types/global';
 
-    // Cores de texto
-    black: '\x1b[30m',
-    red: '\x1b[31m',
-    green: '\x1b[32m',
-    yellow: '\x1b[33m',
-    blue: '\x1b[34m',
-    magenta: '\x1b[35m',
-    cyan: '\x1b[36m',
-    white: '\x1b[37m',
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
-    // Cores de fundo
-    bgBlack: '\x1b[40m',
-    bgRed: '\x1b[41m',
-    bgGreen: '\x1b[42m',
-    bgYellow: '\x1b[43m',
-    bgBlue: '\x1b[44m',
-    bgMagenta: '\x1b[45m',
-    bgCyan: '\x1b[46m',
-    bgWhite: '\x1b[47m',
-};
+class ApiClient {
+  private client: AxiosInstance;
 
-// Função para criar logs coloridos
-const logColor = (color: string, message: string, data?: any) => {
-    console.log(`${color}%s${colors.reset}`, message);
-    if (data) {
-        console.log(JSON.stringify(data, null, 2));
+  constructor() {
+    this.client = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    this.setupInterceptors();
+  }
+
+  private setupInterceptors() {
+    // Request interceptor
+    this.client.interceptors.request.use(
+      (config) => {
+        // Add auth token if available
+        const token = this.getAuthToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    // Response interceptor
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error: AxiosError) => {
+        if (error.response?.status === 401) {
+          // Handle unauthorized access
+          this.handleUnauthorized();
+        }
+        return Promise.reject(this.formatError(error));
+      }
+    );
+  }
+
+  private getAuthToken(): string | null {
+    // Implement token retrieval logic
+    return null;
+  }
+
+  private handleUnauthorized() {
+    // Implement logout logic
+    console.log('Unauthorized access - redirecting to login');
+  }
+
+  private formatError(error: AxiosError): ApiResponse<null> {
+    return {
+      success: false,
+      data: null,
+      error: error.response?.data?.message || error.message || 'Unknown error occurred',
+    };
+  }
+
+  async get<T>(url: string): Promise<ApiResponse<T>> {
+    try {
+      const response = await this.client.get<T>(url);
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      return error as ApiResponse<T>;
     }
-};
+  }
 
-// Cria uma instância do Axios
-const instance: AxiosInstance = axios.create();
+  async post<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+    try {
+      const response = await this.client.post<T>(url, data);
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      return error as ApiResponse<T>;
+    }
+  }
 
-// Interceptor de requisição
-instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-    logColor(colors.blue, `[Request] ${config.method?.toUpperCase()} ${config.url}`);
-    if (config.headers) {
-        logColor(colors.blue, 'Headers:', config.headers);
+  async put<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+    try {
+      const response = await this.client.put<T>(url, data);
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      return error as ApiResponse<T>;
     }
-    if (config.params) {
-        logColor(colors.blue, 'Body:', config.params);
-    }
-    return config;
-}, (error: AxiosError) => {
-    logColor(colors.red, `[Request Error] ${error.message}`);
-    return Promise.reject(error);
-});
+  }
 
-// Interceptor de resposta
-instance.interceptors.response.use((response: AxiosResponse) => {
-    logColor(colors.green, `[Response] ${response.status} ${response.statusText}`);
-    logColor(colors.green, 'Data:', response.data);
-    if (response.data[0]?.IDERRO === 114) {
-        const logout = getLogout();
-        logout();
+  async delete<T>(url: string): Promise<ApiResponse<T>> {
+    try {
+      const response = await this.client.delete<T>(url);
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      return error as ApiResponse<T>;
     }
-    return response;
-}, (error: AxiosError) => {
-    if (error.response) {
-        logColor(colors.red, `[Response Error] ${error.response.status} ${error.response.statusText}`);
-        logColor(colors.red, 'Data:', error.response.data);
-    } else {
-        logColor(colors.red, `[Response Error] ${error.message}`);
-    }
-    return Promise.reject(error);
-});
+  }
+}
 
-// Exporta a instância do Axios
-export default instance;
+export const apiClient = new ApiClient();

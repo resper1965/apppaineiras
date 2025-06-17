@@ -1,4 +1,4 @@
-import { AuthContextType, getAuthContext } from '@/providers/AuthProvider';
+import { getAuthContext } from '@/providers/AuthProvider';
 import instance from '../api';
 import { AxiosResponse } from 'axios';
 

@@ -5,8 +5,20 @@ run = "npm run start"
 channel = "stable-24_05"
 
 [deployment]
-run = ["sh", "-c", "npm run start"]
+run = ["sh", "-c", "npx expo start --web --port 5000 --host 0.0.0.0"]
 
 [[ports]]
 localPort = 8081
 externalPort = 80
+
+[workflows]
+runButton = "Start Expo"
+
+[[workflows.workflow]]
+name = "Start Expo"
+author = 42211388
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm start"
